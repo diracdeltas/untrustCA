@@ -10,6 +10,8 @@ import sys
 import glob
 import urllib2
 import re
+import subprocess
+
 
 if len(sys.argv) > 1:
     PROFILEDIR = sys.argv[1]
@@ -36,4 +38,14 @@ def get_CA_names():
         if m:
             yield m.group(1)
 
+def revoke_trust():
+    for name in get_CA_names():
+        try:
+            print name
+            subprocess.call(['certutil', '-A', '-n', name,
+                             '-t', 'c,c,c', '-d', PROFILEDIR])
+        except OSError:
+            sys.stderr.write("Could not edit FF cert file; is libnss3-tools installed?")
+            sys.exit(1)
 
+revoke_trust()
