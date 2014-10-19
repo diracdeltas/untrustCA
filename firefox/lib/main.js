@@ -8,23 +8,13 @@
 const { Cc, Ci, Cr, Cu } = require('chrome');
 const observer = require('./observer');
 const events = require('sdk/system/events');
-
-const nsIXC = Ci.nsIX509Cert;
-const nsINCC = Ci.nsINSSCertCache;
-const nsIDB = Ci.nsIX509CertDB;
-
-const CA_TYPE = nsIXC.CA_CERT;
-const UNTRUSTED = nsIDB.UNTRUSTED;
-const TRUSTED_SSL = nsIDB.TRUSTED_SSL;
-
-
-/** @type Ci.nsIX509CertDB */
-let certDB = Cc['@mozilla.org/security/x509certdb;1'].
-  getService(nsIDB);
+const { CA_TYPE, UNTRUSTED, TRUSTED_SSL, certDB, nsIXC, nsICC, nsIDB } =
+  require('./constants');
+const { frame } = require('./ui');
 
 /** @type Ci.nsINssCertCache */
 let certCache = Cc['@mozilla.org/security/nsscertcache;1'].
-    createInstance(nsINCC);
+    createInstance(nsICC);
 
 /**
  * Load all the CA certs from the active Firefox profile into a cache.

@@ -7,6 +7,8 @@
 
 const { Ci, Cc, Cr } = require('chrome');
 const { XMLHttpRequest } = require('sdk/net/xhr');
+const { certDB, TOKEN_NAME_ROOT } = require('./constants');
+const { frame } = require('./ui');
 
 /**
  * Retrieves SSL cert chain for a channel if verification failed. If
@@ -60,7 +62,7 @@ exports.onExamineResponse = function(event) {
     let req = new XMLHttpRequest();
     req.open('GET', uri);
     req.channel.notificationCallbacks = new badCertListener();
-    req.onload = req.onerror = function(e) { checkingBadCert[uri] = false; }
+    req.onload = req.onerror = function(e) { checkingBadCert[uri] = false; };
     req.send();
   }
 };
@@ -105,4 +107,10 @@ badCertListener.prototype = {
  */
 function processCert_(cert) {
   console.log('processCert_', cert.commonName, cert.dbKey);
+  /** @type Ci.nsIX509Cert */
+  let dbResult = certDB.findCertByDBKey(cert.dbKey, null);
+  if (dbResult && dbResult.tokenName === TOKEN_NAME_ROOT) {
+    console.log('found cert in DB', dbResult);
+    frame.postMessage({result: dbResult.commonName}, frame.url);
+  }
 }
