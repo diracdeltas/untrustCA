@@ -6,6 +6,8 @@
 'use strict';
 
 const { Cc, Ci, Cr, Cu } = require('chrome');
+const observer = require('./observer');
+const events = require('sdk/system/events');
 
 const nsIXC = Ci.nsIX509Cert;
 const nsINCC = Ci.nsINSSCertCache;
@@ -13,6 +15,7 @@ const nsIDB = Ci.nsIX509CertDB;
 
 const CA_TYPE = nsIXC.CA_CERT;
 const UNTRUSTED = nsIDB.UNTRUSTED;
+const TRUSTED_SSL = nsIDB.TRUSTED_SSL;
 
 
 /** @type Ci.nsIX509CertDB */
@@ -33,7 +36,6 @@ function loadCerts() {
 
 /**
  * Untrust all the root CA certs.
- * @return {boolean}
  * @public
  */
 function untrustCerts() {
@@ -44,16 +46,50 @@ function untrustCerts() {
   while (certEnum.hasMoreElements()) {
     /** @type Ci.nsIX09Cert */
     let cert = certEnum.getNext().QueryInterface(nsIXC);
-    console.log('untrusting cert for', cert.commonName, cert.dbKey);
+    console.log('untrusting cert for', cert.commonName);
+    // TODO: Only unset TRUSTED_SSL bits?
     certDB.setCertTrust(cert, CA_TYPE, UNTRUSTED);
   }
-  return true;
+}
+
+/**
+ * Trust a single root CA.
+ * @param {Ci.nsIX509Cert} cert
+ * @public
+ */
+function trustCert(cert) {
+  certDB.setCertTrust(cert, CA_TYPE, TRUSTED_SSL);
+}
+
+/**
+ * Attach Firefox API event listeners.
+ * @private
+ */
+function loadObservers_() {
+  events.on('http-on-examine-response', observer.onExamineResponse);
+}
+
+/**
+ * Detach Firefox API event listeners.
+ * @private
+ */
+function unloadObservers_() {
+  events.on('http-on-examine-response', observer.onExamineResponse);
 }
 
 function main(options) {
   console.log('started up!', options);
   loadCerts();
-  untrustCerts();
+  loadObservers_();
+  if (options.loadReason === 'install') {
+    untrustCerts();
+  }
+}
+
+function unload() {
+  console.log('unloading');
+  unloadObservers_();
 }
 
 exports.main = main;
+exports.onUnload = unload;
