@@ -44,11 +44,13 @@ function untrustCerts() {
 
 /**
  * Trust a single root CA.
- * @param {Ci.nsIX509Cert} cert
+ * @param {string} certId
  * @public
  */
-function trustCert(cert) {
+function trustCert(certId) {
+  let cert = certDB.findCertByDBKey(certId, null);
   certDB.setCertTrust(cert, CA_TYPE, TRUSTED_SSL);
+  console.log('trusted:', cert.commonName);
 }
 
 /**
@@ -83,3 +85,4 @@ function unload() {
 
 exports.main = main;
 exports.onUnload = unload;
+exports.trustCert = trustCert;

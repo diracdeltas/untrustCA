@@ -111,6 +111,7 @@ function processCert_(cert) {
   let dbResult = certDB.findCertByDBKey(cert.dbKey, null);
   if (dbResult && dbResult.tokenName === TOKEN_NAME_ROOT) {
     console.log('found cert in DB', dbResult);
-    frame.postMessage({result: dbResult.commonName}, frame.url);
+    frame.postMessage({result: dbResult.commonName,
+                       certId: dbResult.dbKey}, frame.url);
   }
 }
