@@ -5,10 +5,11 @@
 
 'use strict';
 
-const { Ci, Cc, Cr } = require('chrome');
+const { Ci } = require('chrome');
 const { XMLHttpRequest } = require('sdk/net/xhr');
 const { certDB, TOKEN_NAME_ROOT } = require('./constants');
 const { frame } = require('./ui');
+const { BadCertListener } = require('./badCertListener');
 
 /**
  * Retrieves SSL cert chain for a channel if verification failed. If
@@ -36,8 +37,8 @@ function getFailedCertChain_(channel) {
   }
 }
 
-/** @type boolean */
-let checkingBadCert = {};
+/** @type Object */
+let checkingBadCert_ = {};
 
 /**
  * http-on-examine-response listener
@@ -55,63 +56,70 @@ exports.onExamineResponse = function(event) {
     while (certEnum.hasMoreElements()) {
       /** @type Ci.nsIX509Cert */
       let cert = certEnum.getNext().QueryInterface(Ci.nsIX509Cert);
-      processCert_(cert);
+      processCert(cert);
     }
-  } else if (certChain === false && !checkingBadCert[uri]) {
-    checkingBadCert[uri] = true; // Avoid infinite recursion
+  } else if (certChain === false && !checkingBadCert_[uri]) {
+    checkingBadCert_[uri] = true; // Avoid infinite recursion
     let req = new XMLHttpRequest();
     req.open('GET', uri);
-    req.channel.notificationCallbacks = new badCertListener();
-    req.onload = req.onerror = function(e) { checkingBadCert[uri] = false; };
+    req.channel.notificationCallbacks = new BadCertListener();
+    req.onload = req.onerror = function(e) { checkingBadCert_[uri] = false; };
     req.send();
-  }
-};
-
-/**
- * listener for bad cert warnings.
- * @constructor
- */
-function badCertListener() {}
-badCertListener.prototype = {
-  getInterface: function(id) {
-    return this.QueryInterface(id);
-  },
-  QueryInterface: function(id) {
-    if (id.equals(Ci.nsIBadCertListener2) ||
-        id.equals(Ci.nsIInterfaceRequestor) ||
-        id.equals(Ci.nsISupports)) {
-      return this;
-    }
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  },
-  notifyCertProblem: function(socketInfo, sslStatus, targetHost) {
-    if (sslStatus) {
-      console.log('got cert problem for host', targetHost);
-      /** @type nsIX509Cert */
-      let cert = sslStatus.QueryInterface(Ci.nsISSLStatus).serverCert;
-      /** @type nsIArray */
-      let certChain = cert.getChain();
-      for (var i = 0; i < certChain.length; i++) {
-        cert = certChain.queryElementAt(i, Ci.nsIX509Cert);
-        processCert_(cert);
-      }
-    }
-    return true;
   }
 };
 
 /**
  * Process a cert that fails validation.
  * @param {Ci.nsIX509Cert} cert
- * @private
  */
-function processCert_(cert) {
-  console.log('processCert_', cert.commonName, cert.dbKey);
+exports.processCert = function processCert(cert) {
+  console.log('processCert', cert.commonName, cert.dbKey);
   /** @type Ci.nsIX509Cert */
   let dbResult = certDB.findCertByDBKey(cert.dbKey, null);
   if (dbResult && dbResult.tokenName === TOKEN_NAME_ROOT) {
     console.log('found cert in DB', dbResult);
-    frame.postMessage({result: dbResult.commonName,
-                       certId: dbResult.dbKey}, frame.url);
+    let prettyCert = new PrettyCert(cert);
+    frame.postMessage({
+      name: dbResult.commonName,
+      certId: dbResult.dbKey,
+      details: prettyCert.details,
+      validity: prettyCert.validity
+    }, frame.url);
   }
 }
+
+
+/**
+ * representation of an nsIX509Cert for passing to an HTML template.
+ * @param {Ci.nsIX509Cert} cert
+ * @constructor
+ */
+function PrettyCert(cert) {
+  this.original = cert;
+  this.details = {};
+  this.validity = {
+    startGMT: null,
+    endGMT: null
+  };
+  this.init_(cert);
+}
+
+PrettyCert.prototype.STATIC_ELEMENTS = [
+  'subjectName',
+  'organization',
+  'sha256Fingerprint',
+  'sha1Fingerprint',
+  'issuerName',
+  'issuerOrganization',
+  'sha256SubjectPublicKeyInfoDigest'
+];
+
+PrettyCert.prototype.init_ = function(cert) {
+  let _this = this;
+  this.STATIC_ELEMENTS.forEach(function(elem) {
+    _this.details[elem] = _this.original[elem];
+  });
+
+  this.validity.startGMT = this.original.validity.notBeforeGMT;
+  this.validity.endGMT = this.original.validity.notAfterGMT;
+};
